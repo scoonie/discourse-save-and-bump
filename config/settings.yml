@@ -1,0 +1,4 @@
+plugins:
+  save_and_bump_tl4_enabled:
+    default: true
+    client: true
