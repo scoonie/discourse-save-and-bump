@@ -1,0 +1,5 @@
+en:
+  save_and_bump:
+    errors:
+      has_replies: "Save & bump is only available when the topic has no replies."
+      forbidden: "You do not have permission to bump this topic."
