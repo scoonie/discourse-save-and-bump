@@ -30,10 +30,11 @@ after_initialize do
         raise Discourse::NotFound unless first_post
         guardian.ensure_can_edit!(first_post)
 
-        # Permission: staff or meets minimum trust level
+        # Permission: feature must be enabled, and user must be staff or meet minimum trust level
         allowed =
-          current_user.staff? ||
-          (SiteSetting.save_and_bump_enabled && current_user.trust_level >= SiteSetting.save_and_bump_minimum_trust_level)
+          SiteSetting.save_and_bump_enabled &&
+          (current_user.staff? ||
+            current_user.trust_level >= SiteSetting.save_and_bump_minimum_trust_level)
 
         raise Discourse::InvalidAccess unless allowed
 
