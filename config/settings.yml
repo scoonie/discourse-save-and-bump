@@ -1,4 +1,11 @@
 plugins:
-  save_and_bump_tl4_enabled:
+  save_and_bump_enabled:
     default: true
     client: true
+  save_and_bump_minimum_trust_level:
+    default: 4
+    client: true
+    type: enum
+    choices:
+      - 3
+      - 4
