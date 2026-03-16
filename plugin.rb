@@ -1,63 +1,67 @@
-# name: discourse-save-and-bump
-# about: Adds a secure endpoint to "save & bump" the topic when editing the OP, with no replies
-# version: 1.0.0
-# authors: You
-# url: https://your.repo.example/discourse-save-and-bump
+# frozen_string_literal: true
 
-enabled_site_setting :save_and_bump_tl4_enabled
+# name: discourse-save-and-bump
+# about: Adds a "Save & Bump" button when editing the first post, allowing TL4+ and staff to bump the topic to the top of the activity feed.
+# version: 1.1.0
+# authors: scoonie
+# url: https://github.com/scoonie/discourse-save-and-bump
+
+enabled_site_setting :save_and_bump_enabled
 
 after_initialize do
   module ::DiscourseSaveAndBump
+    PLUGIN_NAME = "discourse-save-and-bump"
+
     class Engine < ::Rails::Engine
-      engine_name "discourse_save_and_bump"
+      engine_name PLUGIN_NAME
       isolate_namespace DiscourseSaveAndBump
     end
-  end
 
-  require_dependency "application_controller"
+    class SaveAndBumpController < ::ApplicationController
+      requires_plugin PLUGIN_NAME
+      requires_login
 
-  class DiscourseSaveAndBump::SaveAndBumpController < ::ApplicationController
-    requires_login
+      def bump
+        topic = Topic.find(params[:topic_id])
 
-    def update
-      topic = Topic.find(params[:id])
+        # Ensure the user can see and edit the first post
+        guardian.ensure_can_see!(topic)
+        first_post = topic.first_post
+        raise Discourse::NotFound unless first_post
+        guardian.ensure_can_edit!(first_post)
 
-      guardian.ensure_can_see!(topic)
-      post = topic.first_post
-      raise Discourse::InvalidParameters.new(:id) unless post
+        # Permission: staff or meets minimum trust level
+        allowed =
+          current_user.staff? ||
+          (SiteSetting.save_and_bump_enabled && current_user.trust_level >= SiteSetting.save_and_bump_minimum_trust_level)
 
-      guardian.ensure_can_edit!(post)
+        raise Discourse::InvalidAccess unless allowed
 
-      if topic.reply_count.to_i > 0
-        raise Discourse::InvalidAccess.new(I18n.t("save_and_bump.errors.has_replies"))
+        # Rate limit: max 5 bumps per topic per hour per user
+        RateLimiter.new(current_user, "save_and_bump_#{topic.id}", 5, 1.hour).performed!
+
+        # Bump the topic by setting bumped_at to now
+        now = Time.zone.now
+        topic.update_columns(bumped_at: now, updated_at: now)
+
+        # Log the action for audit trail
+        StaffActionLogger.new(current_user).log_custom(
+          "save_and_bump",
+          topic_id: topic.id,
+          topic_title: topic.title,
+          bumped_at: now.iso8601,
+        )
+
+        render json: success_json
       end
-
-      allowed = current_user.staff? ||
-        (SiteSetting.save_and_bump_tl4_enabled && current_user.trust_level.to_i >= TrustLevel[4])
-
-      raise Discourse::InvalidAccess.new(I18n.t("save_and_bump.errors.forbidden")) unless allowed
-
-      RateLimiter.new(current_user, "save_and_bump", 10, 1.minute).performed!
-
-      now = Time.zone.now
-      topic.update_columns(bumped_at: now)
-
-      StaffActionLogger.new(current_user).log_custom(
-        "save_and_bump",
-        topic_id: topic.id,
-        topic_title: topic.title,
-        bumped_at: now
-      )
-
-      render json: success_json
     end
   end
 
   DiscourseSaveAndBump::Engine.routes.draw do
-    put "/t/:id/save-and-bump" => "save_and_bump#update"
+    post "/topics/:topic_id/bump" => "save_and_bump#bump"
   end
 
   Discourse::Application.routes.append do
-    mount ::DiscourseSaveAndBump::Engine, at: "/"
+    mount ::DiscourseSaveAndBump::Engine, at: "/discourse-save-and-bump"
   end
 end
