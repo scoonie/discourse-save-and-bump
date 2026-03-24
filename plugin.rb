@@ -24,11 +24,18 @@ after_initialize do
       def bump
         topic = Topic.find(params[:topic_id])
 
-        # Ensure the user can see and edit the first post
+        # Ensure the user can see the topic
         guardian.ensure_can_see!(topic)
-        first_post = topic.first_post
-        raise Discourse::NotFound unless first_post
-        guardian.ensure_can_edit!(first_post)
+
+        # When a post_id is supplied, verify the user can edit that specific post;
+        # otherwise, fall back to the first post in the topic.
+        post =
+          if params[:post_id].present?
+            Post.find_by(id: params[:post_id].to_i, topic_id: topic.id)
+          end
+        post ||= topic.first_post
+        raise Discourse::NotFound unless post
+        guardian.ensure_can_edit!(post)
 
         # Permission: feature must be enabled, and user must be staff or meet minimum trust level
         allowed =

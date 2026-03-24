@@ -2,3 +2,4 @@ en:
   site_settings:
     save_and_bump_enabled: "Enable the Save & Bump button when editing the first post of a topic."
     save_and_bump_minimum_trust_level: "Minimum trust level required to use Save & Bump (staff can always use it)."
+    save_and_bump_show_on_all_edits: "Show the Save & Bump button when editing any post, not just the first post (OP)."

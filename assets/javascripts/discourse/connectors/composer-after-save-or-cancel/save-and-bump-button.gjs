@@ -22,8 +22,10 @@ export default class SaveAndBumpButton extends Component {
     // Only show when editing
     if (model.action !== "edit") return false;
 
-    // Only show when editing the first post (the OP)
-    if (model.post?.post_number !== 1) return false;
+    // Unless "show on all edits" is enabled, only show on the first post (OP)
+    if (!this.siteSettings.save_and_bump_show_on_all_edits) {
+      if (model.post?.post_number !== 1) return false;
+    }
 
     // Check permissions: staff or meets minimum trust level
     if (!this.siteSettings.save_and_bump_enabled) return false;
@@ -40,6 +42,7 @@ export default class SaveAndBumpButton extends Component {
     this.isSaving = true;
 
     const topicId = this.composer.model.topic?.id;
+    const postId = this.composer.model.post?.id;
 
     try {
       // First, perform the normal save via the composer service
@@ -54,6 +57,7 @@ export default class SaveAndBumpButton extends Component {
       // Then bump the topic via our plugin endpoint
       await ajax(`/discourse-save-and-bump/topics/${topicId}/bump`, {
         type: "POST",
+        data: { post_id: postId },
       });
 
       this.toasts.success({

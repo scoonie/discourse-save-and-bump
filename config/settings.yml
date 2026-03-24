@@ -9,3 +9,6 @@ plugins:
     choices:
       - 3
       - 4
+  save_and_bump_show_on_all_edits:
+    default: false
+    client: true
