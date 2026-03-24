@@ -22,8 +22,10 @@ export default class SaveAndBumpButton extends Component {
     // Only show when editing
     if (model.action !== "edit") return false;
 
-    // Only show when editing the first post (the OP)
-    if (model.post?.post_number !== 1) return false;
+    // Unless "show on all edits" is enabled, only show on the first post (OP)
+    if (!this.siteSettings.save_and_bump_show_on_all_edits) {
+      if (model.post?.post_number !== 1) return false;
+    }
 
     // Check permissions: staff or meets minimum trust level
     if (!this.siteSettings.save_and_bump_enabled) return false;
