@@ -69,17 +69,17 @@ export default class SaveAndBumpButton extends Component {
       this.isSaving = false;
     }
   }
-}
 
-<template>
-  {{#if this.shouldShow}}
-    <DButton
-      @action={{this.saveAndBump}}
-      @label="save_and_bump.button_label"
-      @translatedTitle={{i18n "save_and_bump.button_title"}}
-      @isLoading={{this.isSaving}}
-      @disabled={{this.composer.disableSubmit}}
-      class="btn-primary save-and-bump-btn"
-    />
-  {{/if}}
-</template>
+  <template>
+    {{#if this.shouldShow}}
+      <DButton
+        @action={{this.saveAndBump}}
+        @label="save_and_bump.button_label"
+        @translatedTitle={{i18n "save_and_bump.button_title"}}
+        @isLoading={{this.isSaving}}
+        @disabled={{this.composer.disableSubmit}}
+        class="btn-primary save-and-bump-btn"
+      />
+    {{/if}}
+  </template>
+}
