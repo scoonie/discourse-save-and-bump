@@ -27,9 +27,8 @@ after_initialize do
         # Ensure the user can see the topic
         guardian.ensure_can_see!(topic)
 
-        # Determine which post to check edit permission against.
-        # When a post_id is supplied (non-OP edits with show_on_all_edits enabled),
-        # verify the user can edit that specific post; otherwise fall back to the first post.
+        # When a post_id is supplied, verify the user can edit that specific post;
+        # otherwise, fall back to the first post in the topic.
         post =
           if params[:post_id].present?
             Post.find_by(id: params[:post_id].to_i, topic_id: topic.id)
