@@ -42,6 +42,7 @@ export default class SaveAndBumpButton extends Component {
     this.isSaving = true;
 
     const topicId = this.composer.model.topic?.id;
+    const postId = this.composer.model.post?.id;
 
     try {
       // First, perform the normal save via the composer service
@@ -56,6 +57,7 @@ export default class SaveAndBumpButton extends Component {
       // Then bump the topic via our plugin endpoint
       await ajax(`/discourse-save-and-bump/topics/${topicId}/bump`, {
         type: "POST",
+        data: { post_id: postId },
       });
 
       this.toasts.success({
