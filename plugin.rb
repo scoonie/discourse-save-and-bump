@@ -2,7 +2,7 @@
 
 # name: discourse-save-and-bump
 # about: Adds a "Save & Bump" button when editing the first post, allowing TL4+ and staff to bump the topic to the top of the activity feed.
-# version: 1.1.0
+# version: 1.2.0
 # authors: scoonie
 # url: https://github.com/scoonie/discourse-save-and-bump
 
@@ -48,9 +48,14 @@ after_initialize do
         # Rate limit: max 5 bumps per topic per hour per user
         RateLimiter.new(current_user, "save_and_bump_#{topic.id}", 5, 1.hour).performed!
 
-        # Bump the topic by setting bumped_at to now
+        # Bump the topic by setting bumped_at to now and publishing
+        # the change so that topic list caches are invalidated.
+        # This mirrors Discourse core's PostRevisor#bump_topic behaviour.
         now = Time.zone.now
         topic.update_columns(bumped_at: now, updated_at: now)
+        TopicTrackingState.publish_muted(topic)
+        TopicTrackingState.publish_unmuted(topic)
+        TopicTrackingState.publish_latest(topic)
 
         # Log the action for audit trail
         StaffActionLogger.new(current_user).log_custom(
