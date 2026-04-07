@@ -27,17 +27,9 @@ after_initialize do
         # Ensure the user can see the topic
         guardian.ensure_can_see!(topic)
 
-        # When a post_id is supplied, verify the user can edit that specific post;
-        # otherwise, fall back to the first post in the topic.
-        post =
-          if params[:post_id].present?
-            Post.find_by(id: params[:post_id].to_i, topic_id: topic.id)
-          end
-        post ||= topic.first_post
-        raise Discourse::NotFound unless post
-        guardian.ensure_can_edit!(post)
-
-        # Permission: feature must be enabled, and user must be staff or meet minimum trust level
+        # Permission: feature must be enabled, and user must be staff or meet minimum trust level.
+        # Staff and trusted users only need to be able to see the topic (checked above); they do
+        # not need edit permission on the post in order to bump.
         allowed =
           SiteSetting.save_and_bump_enabled &&
           (current_user.staff? ||

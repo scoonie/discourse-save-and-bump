@@ -5,3 +5,7 @@ en:
       button_title: "Save your edit and bump this topic to the top of the activity feed"
       success: "Post saved and topic bumped!"
       error: "Could not bump the topic."
+      bump_button_label: "Bump"
+      bump_button_title: "Bump this topic to the top of the activity feed"
+      bump_success: "Topic bumped!"
+      bump_error: "Could not bump the topic."
