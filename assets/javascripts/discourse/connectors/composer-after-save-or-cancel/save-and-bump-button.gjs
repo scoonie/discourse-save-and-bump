@@ -4,7 +4,6 @@ import { action } from "@ember/object";
 import { service } from "@ember/service";
 import DButton from "discourse/components/d-button";
 import { ajax } from "discourse/lib/ajax";
-import { popupAjaxError } from "discourse/lib/ajax-error";
 import { i18n } from "discourse-i18n";
 
 export default class SaveAndBumpButton extends Component {
@@ -41,31 +40,44 @@ export default class SaveAndBumpButton extends Component {
     if (this.isSaving) return;
     this.isSaving = true;
 
+    // Capture IDs before save, since the composer model is cleared when
+    // the composer closes after a successful save.
     const topicId = this.composer.model.topic?.id;
     const postId = this.composer.model.post?.id;
 
+    if (!topicId) {
+      this.isSaving = false;
+      return;
+    }
+
+    // Grab references to services before the component may be torn down
+    // when the composer closes after save.
+    const toasts = this.toasts;
+
     try {
-      // First, perform the normal save via the composer service
+      // Perform the normal save via the composer service.
+      // Note: composer.save() swallows errors internally so the catch
+      // block below won't fire for save failures; the user will see
+      // Discourse's own error handling in that case.
       await this.composer.save(true);
-    } catch (error) {
-      popupAjaxError(error);
+    } catch {
       this.isSaving = false;
       return;
     }
 
     try {
-      // Then bump the topic via our plugin endpoint
+      // Bump the topic via our plugin endpoint
       await ajax(`/discourse-save-and-bump/topics/${topicId}/bump`, {
         type: "POST",
         data: { post_id: postId },
       });
 
-      this.toasts.success({
+      toasts.success({
         duration: 3000,
         data: { message: i18n("save_and_bump.success") },
       });
     } catch {
-      this.toasts.error({
+      toasts.error({
         duration: 5000,
         data: { message: i18n("save_and_bump.error") },
       });
