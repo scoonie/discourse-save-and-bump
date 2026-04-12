@@ -33,7 +33,7 @@ after_initialize do
         allowed =
           SiteSetting.save_and_bump_enabled &&
           (current_user.staff? ||
-            current_user.trust_level >= SiteSetting.save_and_bump_minimum_trust_level)
+            current_user.trust_level >= SiteSetting.save_and_bump_minimum_trust_level.to_i)
 
         raise Discourse::InvalidAccess unless allowed
 
