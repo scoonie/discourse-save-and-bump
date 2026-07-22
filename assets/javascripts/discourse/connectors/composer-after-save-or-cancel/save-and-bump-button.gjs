@@ -7,12 +7,14 @@ import { ajax } from "discourse/lib/ajax";
 import { i18n } from "discourse-i18n";
 
 export default class SaveAndBumpButton extends Component {
+  @service appEvents;
   @service composer;
   @service currentUser;
   @service siteSettings;
   @service toasts;
 
   @tracked isSaving = false;
+  _pendingSaveCallback = null;
 
   get shouldShow() {
     const model = this.composer.model;
@@ -36,7 +38,7 @@ export default class SaveAndBumpButton extends Component {
   }
 
   @action
-  async saveAndBump() {
+  saveAndBump() {
     if (this.isSaving) return;
     this.isSaving = true;
 
@@ -53,20 +55,54 @@ export default class SaveAndBumpButton extends Component {
     // Grab references to services before the component may be torn down
     // when the composer closes after save.
     const toasts = this.toasts;
+    const appEvents = this.appEvents;
 
-    try {
-      // Perform the normal save via the composer service.
-      // Note: composer.save() swallows errors internally so the catch
-      // block below won't fire for save failures; the user will see
-      // Discourse's own error handling in that case.
-      await this.composer.save(true);
-    } catch {
-      this.isSaving = false;
-      return;
+    // Use appEvents to detect save completion. This is more reliable than
+    // awaiting composer.save() because:
+    // 1. DButton's INP optimization wraps actions in next(), making async
+    //    return values unreliable.
+    // 2. composer.save() closes the composer on success, destroying this
+    //    component mid-operation. Setting tracked properties on a destroyed
+    //    Glimmer component throws silently.
+    // 3. The appEvents service survives component destruction.
+    const onSaved = () => {
+      this._pendingSaveCallback = null;
+      appEvents.off("composer:saved", this, onSaved);
+      this._performBump(topicId, postId, toasts);
+    };
+
+    this._pendingSaveCallback = onSaved;
+    appEvents.on("composer:saved", this, onSaved);
+
+    // Perform the normal save via the composer service.
+    // If save fails, Discourse shows its own error handling. We clean up
+    // our listener after a timeout to avoid leaking if save never completes.
+    const saveResult = this.composer.save(true);
+
+    // Handle the case where save() returns a promise that rejects or
+    // returns undefined (early return from validation failure).
+    if (saveResult && typeof saveResult.then === "function") {
+      saveResult.then(null, () => {
+        // Save failed - clean up listener and reset state
+        this._pendingSaveCallback = null;
+        appEvents.off("composer:saved", this, onSaved);
+        if (!this.isDestroying && !this.isDestroyed) {
+          this.isSaving = false;
+        }
+      });
+    } else {
+      // save() returned synchronously (validation failure / early return).
+      // The composer:saved event won't fire, so clean up immediately.
+      this._pendingSaveCallback = null;
+      appEvents.off("composer:saved", this, onSaved);
+      if (!this.isDestroying && !this.isDestroyed) {
+        this.isSaving = false;
+      }
     }
+  }
 
+  async _performBump(topicId, postId, toasts) {
     try {
-      // Bump the topic via our plugin endpoint
       await ajax(`/discourse-save-and-bump/topics/${topicId}/bump`, {
         type: "POST",
         data: { post_id: postId },
@@ -82,7 +118,19 @@ export default class SaveAndBumpButton extends Component {
         data: { message: i18n("save_and_bump.error") },
       });
     } finally {
-      this.isSaving = false;
+      if (!this.isDestroying && !this.isDestroyed) {
+        this.isSaving = false;
+      }
+    }
+  }
+
+  willDestroy() {
+    super.willDestroy(...arguments);
+    // Clean up any pending event listener if component is destroyed
+    // before save completes (e.g. user navigates away).
+    if (this._pendingSaveCallback) {
+      this.appEvents.off("composer:saved", this, this._pendingSaveCallback);
+      this._pendingSaveCallback = null;
     }
   }
 
