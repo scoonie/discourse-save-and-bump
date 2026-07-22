@@ -15,6 +15,7 @@ export default class SaveAndBumpButton extends Component {
 
   @tracked isSaving = false;
   _pendingSaveCallback = null;
+  _isDestroying = false;
 
   get shouldShow() {
     const model = this.composer.model;
@@ -75,8 +76,8 @@ export default class SaveAndBumpButton extends Component {
     appEvents.on("composer:saved", this, onSaved);
 
     // Perform the normal save via the composer service.
-    // If save fails, Discourse shows its own error handling. We clean up
-    // our listener after a timeout to avoid leaking if save never completes.
+    // If save fails, Discourse shows its own error handling. Clean up
+    // our listener on rejection or synchronous early return.
     const saveResult = this.composer.save(true);
 
     // Handle the case where save() returns a promise that rejects or
@@ -86,7 +87,7 @@ export default class SaveAndBumpButton extends Component {
         // Save failed - clean up listener and reset state
         this._pendingSaveCallback = null;
         appEvents.off("composer:saved", this, onSaved);
-        if (!this.isDestroying && !this.isDestroyed) {
+        if (!this._isDestroying) {
           this.isSaving = false;
         }
       });
@@ -95,7 +96,7 @@ export default class SaveAndBumpButton extends Component {
       // The composer:saved event won't fire, so clean up immediately.
       this._pendingSaveCallback = null;
       appEvents.off("composer:saved", this, onSaved);
-      if (!this.isDestroying && !this.isDestroyed) {
+      if (!this._isDestroying) {
         this.isSaving = false;
       }
     }
@@ -118,13 +119,14 @@ export default class SaveAndBumpButton extends Component {
         data: { message: i18n("save_and_bump.error") },
       });
     } finally {
-      if (!this.isDestroying && !this.isDestroyed) {
+      if (!this._isDestroying) {
         this.isSaving = false;
       }
     }
   }
 
   willDestroy() {
+    this._isDestroying = true;
     super.willDestroy(...arguments);
     // Clean up any pending event listener if component is destroyed
     // before save completes (e.g. user navigates away).
