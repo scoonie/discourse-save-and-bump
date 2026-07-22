@@ -82,7 +82,7 @@ export default class SaveAndBumpButton extends Component {
     // Handle the case where save() returns a promise that rejects or
     // returns undefined (early return from validation failure).
     if (saveResult && typeof saveResult.then === "function") {
-      saveResult.then(null, () => {
+      saveResult.catch(() => {
         // Save failed - clean up listener and reset state
         this._pendingSaveCallback = null;
         appEvents.off("composer:saved", this, onSaved);
