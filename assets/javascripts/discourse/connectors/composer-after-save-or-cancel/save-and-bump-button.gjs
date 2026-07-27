@@ -3,7 +3,6 @@ import { tracked } from "@glimmer/tracking";
 import { action } from "@ember/object";
 import { service } from "@ember/service";
 import DButton from "discourse/components/d-button";
-import { ajax } from "discourse/lib/ajax";
 import { i18n } from "discourse-i18n";
 
 export default class SaveAndBumpButton extends Component {
@@ -43,18 +42,20 @@ export default class SaveAndBumpButton extends Component {
     if (this.isSaving) return;
     this.isSaving = true;
 
-    // Capture IDs before save, since the composer model is cleared when
-    // the composer closes after a successful save.
-    const topicId = this.composer.model.topic?.id;
-    const postId = this.composer.model.post?.id;
-
-    if (!topicId) {
+    const model = this.composer.model;
+    if (!model) {
       this.isSaving = false;
       return;
     }
 
+    // Set the flag on the composer model. The api-initializer registers
+    // Composer.serializeOnUpdate("save_and_bump", "saveAndBump"), so this
+    // value is automatically included in the PUT /posts/:id payload, where
+    // the backend's :should_bump_topic modifier performs the silent bump.
+    model.saveAndBump = true;
+
     // Grab references to services before the component may be torn down
-    // when the composer closes after save.
+    // when the composer closes after a successful save.
     const toasts = this.toasts;
     const appEvents = this.appEvents;
 
@@ -69,7 +70,10 @@ export default class SaveAndBumpButton extends Component {
     const onSaved = () => {
       this._pendingSaveCallback = null;
       appEvents.off("composer:saved", this, onSaved);
-      this._performBump(topicId, postId, toasts);
+      toasts.success({
+        duration: 3000,
+        data: { message: i18n("save_and_bump.success") },
+      });
     };
 
     this._pendingSaveCallback = onSaved;
@@ -87,41 +91,23 @@ export default class SaveAndBumpButton extends Component {
         // Save failed - clean up listener and reset state
         this._pendingSaveCallback = null;
         appEvents.off("composer:saved", this, onSaved);
-        if (!this._isDestroying) {
-          this.isSaving = false;
-        }
+        this._resetSaveState();
       });
     } else {
       // save() returned synchronously (validation failure / early return).
       // The composer:saved event won't fire, so clean up immediately.
       this._pendingSaveCallback = null;
       appEvents.off("composer:saved", this, onSaved);
-      if (!this._isDestroying) {
-        this.isSaving = false;
-      }
+      this._resetSaveState();
     }
   }
 
-  async _performBump(topicId, postId, toasts) {
-    try {
-      await ajax(`/discourse-save-and-bump/topics/${topicId}/bump`, {
-        type: "POST",
-        data: { post_id: postId },
-      });
-
-      toasts.success({
-        duration: 3000,
-        data: { message: i18n("save_and_bump.success") },
-      });
-    } catch {
-      toasts.error({
-        duration: 5000,
-        data: { message: i18n("save_and_bump.error") },
-      });
-    } finally {
-      if (!this._isDestroying) {
-        this.isSaving = false;
-      }
+  _resetSaveState() {
+    if (this.composer.model) {
+      this.composer.model.saveAndBump = false;
+    }
+    if (!this._isDestroying) {
+      this.isSaving = false;
     }
   }
 
@@ -149,3 +135,4 @@ export default class SaveAndBumpButton extends Component {
     {{/if}}
   </template>
 }
+
