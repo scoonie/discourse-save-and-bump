@@ -2,71 +2,50 @@
 
 # name: discourse-save-and-bump
 # about: Adds a "Save & Bump" button when editing the first post, allowing TL4+ and staff to bump the topic to the top of the activity feed.
-# version: 1.2.0
+# version: 2.0.0
 # authors: scoonie
 # url: https://github.com/scoonie/discourse-save-and-bump
 
 enabled_site_setting :save_and_bump_enabled
 
 after_initialize do
-  module ::DiscourseSaveAndBump
-    PLUGIN_NAME = "discourse-save-and-bump"
+  SAVE_AND_BUMP_CF = "save_and_bump_requested"
 
-    class Engine < ::Rails::Engine
-      engine_name PLUGIN_NAME
-      isolate_namespace DiscourseSaveAndBump
+  register_post_custom_field_type(SAVE_AND_BUMP_CF, :boolean)
+
+  # Allow the save_and_bump param to be sent on post update requests.
+  # When the client sends save_and_bump=true, we store a transient custom
+  # field on the post so the :should_bump_topic modifier can read it later
+  # in the same PostRevisor lifecycle.
+  add_permitted_post_update_param(:save_and_bump) do |post, value|
+    if ActiveModel::Type::Boolean.new.cast(value)
+      post.custom_fields[SAVE_AND_BUMP_CF] = true
+      post.save_custom_fields
     end
+  end
 
-    class SaveAndBumpController < ::ApplicationController
-      requires_plugin PLUGIN_NAME
-      requires_login
+  # Hook into PostRevisor's bump decision. Returns true to trigger a silent
+  # bump via core's PostRevisor#bump_topic (no visible post created), false
+  # to suppress bumping, or nil to defer to Discourse's default logic.
+  register_modifier(:should_bump_topic) do |_result, post, _post_changes, _topic_changes, editor|
+    next nil unless post.custom_fields[SAVE_AND_BUMP_CF]
 
-      def bump
-        topic = Topic.find(params[:topic_id])
+    begin
+      allowed =
+        SiteSetting.save_and_bump_enabled &&
+          (editor.staff? || editor.trust_level >= SiteSetting.save_and_bump_minimum_trust_level.to_i)
 
-        # Ensure the user can see the topic
-        guardian.ensure_can_see!(topic)
+      next false unless allowed
 
-        # Permission: feature must be enabled, and user must be staff or meet minimum trust level.
-        # Staff and trusted users only need to be able to see the topic (checked above); they do
-        # not need edit permission on the post in order to bump.
-        allowed =
-          SiteSetting.save_and_bump_enabled &&
-          (current_user.staff? ||
-            current_user.trust_level >= SiteSetting.save_and_bump_minimum_trust_level.to_i)
-
-        raise Discourse::InvalidAccess unless allowed
-
-        # Rate limit: max 5 bumps per topic per hour per user
-        RateLimiter.new(current_user, "save_and_bump_#{topic.id}", 5, 1.hour).performed!
-
-        # Bump the topic by setting bumped_at to now and publishing
-        # the change so that topic list caches are invalidated.
-        # This mirrors Discourse core's PostRevisor#bump_topic behaviour.
-        now = Time.zone.now
-        topic.update_columns(bumped_at: now, updated_at: now)
-        TopicTrackingState.publish_muted(topic)
-        TopicTrackingState.publish_unmuted(topic)
-        TopicTrackingState.publish_latest(topic)
-
-        # Log the action for audit trail
-        StaffActionLogger.new(current_user).log_custom(
-          "save_and_bump",
-          topic_id: topic.id,
-          topic_title: topic.title,
-          bumped_at: now.iso8601,
-        )
-
-        render json: success_json
+      unless SiteSetting.save_and_bump_show_on_all_edits
+        next false unless post.post_number == 1
       end
+
+      true
+    ensure
+      # Always clear the transient flag so future normal edits are unaffected.
+      post.custom_fields.delete(SAVE_AND_BUMP_CF)
+      post.save_custom_fields
     end
-  end
-
-  DiscourseSaveAndBump::Engine.routes.draw do
-    post "/topics/:topic_id/bump" => "save_and_bump#bump"
-  end
-
-  Discourse::Application.routes.append do
-    mount ::DiscourseSaveAndBump::Engine, at: "/discourse-save-and-bump"
   end
 end
