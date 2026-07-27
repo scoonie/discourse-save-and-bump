@@ -27,7 +27,16 @@ after_initialize do
   # Hook into PostRevisor's bump decision. Returns true to trigger a silent
   # bump via core's PostRevisor#bump_topic (no visible post created), false
   # to suppress bumping, or nil to defer to Discourse's default logic.
+  #
+  # Modifier parameters:
+  #   _result       - the accumulated return value from prior modifiers (nil initially)
+  #   post          - the Post being revised
+  #   _post_changes - hash of raw-content changes (unused here)
+  #   _topic_changes - hash of topic-attribute changes (unused here)
+  #   editor        - the User performing the edit
   register_modifier(:should_bump_topic) do |_result, post, _post_changes, _topic_changes, editor|
+    # Guard: only handle requests that carry our save-and-bump flag.
+    # The ensure block below only runs when this check passes.
     next nil unless post.custom_fields[SAVE_AND_BUMP_CF]
 
     begin
@@ -43,7 +52,8 @@ after_initialize do
 
       true
     ensure
-      # Always clear the transient flag so future normal edits are unaffected.
+      # Clear the transient flag now that it has been consumed, so future
+      # normal edits on this post do not accidentally bump the topic.
       post.custom_fields.delete(SAVE_AND_BUMP_CF)
       post.save_custom_fields
     end

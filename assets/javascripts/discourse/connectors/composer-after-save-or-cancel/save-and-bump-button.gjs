@@ -88,27 +88,26 @@ export default class SaveAndBumpButton extends Component {
     // returns undefined (early return from validation failure).
     if (saveResult && typeof saveResult.then === "function") {
       saveResult.catch(() => {
-        // Save failed - clean up listener, clear flag, and reset state
+        // Save failed - clean up listener and reset state
         this._pendingSaveCallback = null;
         appEvents.off("composer:saved", this, onSaved);
-        if (this.composer.model) {
-          this.composer.model.saveAndBump = false;
-        }
-        if (!this._isDestroying) {
-          this.isSaving = false;
-        }
+        this._resetSaveState();
       });
     } else {
       // save() returned synchronously (validation failure / early return).
       // The composer:saved event won't fire, so clean up immediately.
       this._pendingSaveCallback = null;
       appEvents.off("composer:saved", this, onSaved);
-      if (this.composer.model) {
-        this.composer.model.saveAndBump = false;
-      }
-      if (!this._isDestroying) {
-        this.isSaving = false;
-      }
+      this._resetSaveState();
+    }
+  }
+
+  _resetSaveState() {
+    if (this.composer.model) {
+      this.composer.model.saveAndBump = false;
+    }
+    if (!this._isDestroying) {
+      this.isSaving = false;
     }
   }
 
