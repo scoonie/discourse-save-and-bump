@@ -20,7 +20,8 @@ after_initialize do
   add_permitted_post_update_param(:save_and_bump) do |post, value|
     if ActiveModel::Type::Boolean.new.cast(value)
       post.custom_fields[SAVE_AND_BUMP_CF] = true
-      post.save_custom_fields
+    else
+      post.custom_fields.delete(SAVE_AND_BUMP_CF)
     end
   end
 
@@ -49,6 +50,8 @@ after_initialize do
       unless SiteSetting.save_and_bump_show_on_all_edits
         next false unless post.post_number == 1
       end
+
+      RateLimiter.new(editor, "save_and_bump_#{post.topic_id}", 5, 1.hour).performed!
 
       true
     ensure
